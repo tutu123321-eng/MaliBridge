@@ -377,7 +377,13 @@ VKAPI_ATTR void VKAPI_CALL vkb_ep_vkDestroyImage(VkDevice device, VkImage image,
 
 static void fix_reqs(vkb_device *dev, VkMemoryRequirements *r, int allow_shared)
 {
-    r->memoryTypeBits = vkb_mem_bits_to_client(dev->pd, r->memoryTypeBits, allow_shared);
+    /* DIAG (xring probe): what the driver allowed, and what the app is told. */
+    uint32_t server_bits = r->memoryTypeBits;
+    r->memoryTypeBits = vkb_mem_bits_to_client(dev->pd, server_bits, allow_shared);
+    static int shown;
+    if (__atomic_fetch_add(&shown, 1, __ATOMIC_RELAXED) < 48)
+        VKB_WARN("requirements: server types 0x%x -> client types 0x%x (size %llu, shared allowed %d)", server_bits,
+                 r->memoryTypeBits, (unsigned long long)r->size, allow_shared);
 }
 
 static int buffer_shareable(vkb_device *dev, VkBuffer b)
