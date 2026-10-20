@@ -269,6 +269,11 @@ static void build_memory_model(vkb_physdev *pd)
     for (uint32_t i = 0; i < nc; i++)
         VKB_DBG("memory type %u: flags 0x%x heap %u -> server type %u%s", i, c->memoryTypes[i].propertyFlags,
                 c->memoryTypes[i].heapIndex, pd->type_map[i].server_type, pd->type_map[i].shared ? " (shared)" : "");
+    /* DIAG (xring probe): the table the app sees, next to the driver type behind it. */
+    for (uint32_t i = 0; i < nc; i++)
+        VKB_WARN("memory: client type %u: flags 0x%x heap %u -> server type %u (server flags 0x%x)%s", i,
+                 c->memoryTypes[i].propertyFlags, c->memoryTypes[i].heapIndex, pd->type_map[i].server_type,
+                 s->memoryTypes[pd->type_map[i].server_type].propertyFlags, pd->type_map[i].shared ? " shared" : "");
     cap_heaps(pd);
 }
 
