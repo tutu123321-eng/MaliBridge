@@ -375,6 +375,16 @@ VKAPI_ATTR void VKAPI_CALL vkb_ep_vkDestroyImage(VkDevice device, VkImage image,
 
 /* ------------------------------------------------------------------ requirements */
 
+static void fix_reqs_buf(vkb_device *dev, VkMemoryRequirements *r, int allow_shared)
+{
+    uint32_t server_bits = r->memoryTypeBits;
+    r->memoryTypeBits = vkb_mem_bits_to_client_buffer(dev->pd, server_bits, allow_shared);
+    static int shown;
+    if (__atomic_fetch_add(&shown, 1, __ATOMIC_RELAXED) < 48)
+        VKB_WARN("buffer requirements: server types 0x%x -> client types 0x%x (size %llu, shared allowed %d)", server_bits,
+                 r->memoryTypeBits, (unsigned long long)r->size, allow_shared);
+}
+
 static void fix_reqs(vkb_device *dev, VkMemoryRequirements *r, int allow_shared)
 {
     /* DIAG (xring probe): what the driver allowed, and what the app is told. */
@@ -401,7 +411,7 @@ VKAPI_ATTR void VKAPI_CALL vkb_ep_vkGetBufferMemoryRequirements(VkDevice device,
     vkb_device *dev = vkb_dev(device);
     if (rq_lookup(dev, buffer, pReq, NULL)) return;
     vkb_wire_vkGetBufferMemoryRequirements(device, buffer, pReq);
-    fix_reqs(dev, pReq, buffer_shareable(dev, buffer));
+    fix_reqs_buf(dev, pReq, buffer_shareable(dev, buffer));
     rq_store(dev, buffer, pReq, NULL);
 }
 
@@ -419,7 +429,7 @@ VKAPI_ATTR void VKAPI_CALL vkb_ep_vkGetBufferMemoryRequirements2(VkDevice device
     /* The cache keeps the driver's answer; the hint is applied to what the app gets. */
     if (!(plain && rq_lookup(dev, pInfo->buffer, &pReq->memoryRequirements, ded))) {
         vkb_wire_vkGetBufferMemoryRequirements2(device, pInfo, pReq);
-        fix_reqs(dev, &pReq->memoryRequirements, buffer_shareable(dev, pInfo->buffer));
+        fix_reqs_buf(dev, &pReq->memoryRequirements, buffer_shareable(dev, pInfo->buffer));
         if (plain) rq_store(dev, pInfo->buffer, &pReq->memoryRequirements, ded);
     }
     ded_hint(dev, pReq, ded_kept(dev, (uint64_t)pInfo->buffer));
@@ -447,7 +457,7 @@ VKAPI_ATTR void VKAPI_CALL vkb_ep_vkGetDeviceBufferMemoryRequirements(VkDevice d
     vkb_device *dev = vkb_dev(device);
     if (!can_share(dev)) {
         vkb_wire_vkGetDeviceBufferMemoryRequirements(device, pInfo, pReq);
-        fix_reqs(dev, &pReq->memoryRequirements, 0);
+        fix_reqs_buf(dev, &pReq->memoryRequirements, 0);
         ded_hint(dev, pReq, ded_external(pInfo->pCreateInfo->pNext));
         return;
     }
@@ -461,7 +471,7 @@ VKAPI_ATTR void VKAPI_CALL vkb_ep_vkGetDeviceBufferMemoryRequirements(VkDevice d
     VkDeviceBufferMemoryRequirements info = *pInfo;
     info.pCreateInfo = &ci;
     vkb_wire_vkGetDeviceBufferMemoryRequirements(device, &info, pReq);
-    fix_reqs(dev, &pReq->memoryRequirements, 1);
+    fix_reqs_buf(dev, &pReq->memoryRequirements, 1);
     ded_hint(dev, pReq, ded_external(pInfo->pCreateInfo->pNext));
 }
 
