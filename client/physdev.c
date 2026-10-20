@@ -298,6 +298,33 @@ uint32_t vkb_mem_bits_to_client(vkb_physdev *pd, uint32_t server_bits, int allow
     return bits;
 }
 
+/* A buffer an app must fill itself needs a type it can map. On a unified-memory Mali the driver's
+ * ordinary device-local types are host-visible (0x7), but the bridge only maps shared dma-heap
+ * memory, so the client offers those as device-local without host access. When a buffer's mask
+ * then holds nothing mappable at all (XRing O3: indirect buffers get 0x1040, gamescope's upload
+ * buffer 0x3, both leaving client type 0/1 only), every app that writes the buffer directly stops
+ * at findMemoryType. Offer the shared types as well and let the server place the buffer in its
+ * shareable type: the driver's mask is a placement requirement the server already bends for the
+ * resources it shares (server_memory.c, fit_import_type). */
+uint32_t vkb_mem_bits_to_client_buffer(vkb_physdev *pd, uint32_t server_bits, int allow_shared)
+{
+    uint32_t bits = vkb_mem_bits_to_client(pd, server_bits, allow_shared);
+    if (!bits || !allow_shared) return bits;
+    int mappable = 0;
+    for (uint32_t i = 0; i < pd->client_mem.memoryTypeCount && !mappable; i++)
+        mappable = (bits & (1u << i)) && pd->type_map[i].shared;
+    if (mappable) return bits;
+    uint32_t extra = 0;
+    for (uint32_t i = 0; i < pd->client_mem.memoryTypeCount; i++)
+        if (pd->type_map[i].shared) extra |= 1u << i;
+    if (!extra) return bits;
+    static int told;
+    if (__atomic_fetch_add(&told, 1, __ATOMIC_RELAXED) < 8)
+        VKB_WARN("requirements: no mappable type for server types 0x%x (client 0x%x); offering shared types 0x%x", server_bits, bits,
+                 extra);
+    return bits | extra;
+}
+
 /* ------------------------------------------------------------------ setup */
 
 /* The render node the session presents for this GPU (VKBRIDGE_DRM_RENDER="major:minor"). */
