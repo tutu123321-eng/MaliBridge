@@ -190,6 +190,7 @@ void *vkb_wrap(VkObjectType type, const void *parent, uint64_t remote);
 /* physdev.c */
 int vkb_physdev_ready(vkb_physdev *pd);
 uint32_t vkb_mem_bits_to_client(vkb_physdev *pd, uint32_t server_bits, int allow_shared);
+uint32_t vkb_mem_bits_to_client_buffer(vkb_physdev *pd, uint32_t server_bits, int allow_shared);
 
 /* memory.c */
 void vkb_memory_init_device(vkb_device *d);
